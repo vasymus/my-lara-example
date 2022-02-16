@@ -1,0 +1,140 @@
+# This docker-compose.yml file is only for development
+# For Docker Swarm use docker-stack.yml
+version: '3.9'
+
+services:
+    ### Reverse-Proxy (traefik) ###
+    proxy:
+        image: traefik:2.5.3
+        # Enables the web UI and tells Traefik to listen to docker
+        command: --api.insecure=true --providers.docker
+        ports:
+            # The HTTP port
+            - 80:80
+            # The Web UI (enabled by --api.insecure=true)
+            - 8080:8080
+        volumes:
+            # So that Traefik can listen to the Docker events
+            - /var/run/docker.sock:/var/run/docker.sock
+
+    ### APP (php-fpm) ###
+    app:
+        build:
+            context: .
+            dockerfile: docker/app/Dockerfile
+            target: dev
+            args:
+                # change .env XDEBUG_TRIGGER to use other then 'PHPSTORM'
+                XDEBUG_TRIGGER: "${XDEBUG_TRIGGER:-PHPSTORM}"
+                XDEBUG_ON: "${XDEBUG_ON:-false}"
+        volumes:
+            # used delegated mode here on docker for mac for faster disk I/O
+            - .:/var/www/html:delegated
+        extra_hosts:
+            # is used for xdebug
+            - "host.docker.internal:host-gateway"
+        environment:
+            # for xdebug working in cli
+            PHP_IDE_CONFIG: "serverName=Docker"
+        labels:
+            - traefik.http.routers.app.rule=Host(`${DOCKER_SERVER_NAME:-app.localhost}`)
+            - traefik.http.services.app.loadbalancer.server.port=80
+            #- traefik.http.routers.blog.tls=true
+            #- traefik.http.routers.blog.tls.certresolver=lets-encrypt
+            #- traefik.port=80
+        entrypoint: /usr/local/bin/docker-php-entrypoint-dev
+        command: ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisord.conf"]
+        depends_on:
+            - db
+
+    ### DB (MariaDB) ###
+    db:
+        image: mariadb:10.6.4
+        volumes:
+            - mariadb-db-data:/var/lib/mysql
+        environment:
+            # MYSQL_ROOT_PASSWORD is the only required
+            - MYSQL_ROOT_PASSWORD=root
+            - MYSQL_USER=${DOCKER_MYSQL_USER:-default}
+            - MYSQL_PASSWORD=${DOCKER_MYSQL_PASSWORD:-secret}
+            - MYSQL_DATABASE=${DOCKER_MYSQL_DATABASE:-laravel}
+            # didn't want to add any bind mount or additional Dockerfile, so put it to env variable
+            # $$ is used for escaping from docker-compose @see https://docs.docker.com/compose/environment-variables/#substitute-environment-variables-in-compose-files
+            # Init script will be run ONLY on first initialization
+            - |
+                MYSQL_INIT_SCRIPT=
+                ## main database ##
+                CREATE DATABASE IF NOT EXISTS `${DOCKER_MYSQL_DATABASE:-laravel}` COLLATE 'utf8mb4_unicode_ci' ;
+                GRANT ALL ON `${DOCKER_MYSQL_DATABASE:-laravel}`.* TO '${DOCKER_MYSQL_USER:-default}'@'%' ;
+
+                ## test database ##
+                CREATE DATABASE IF NOT EXISTS `${DOCKER_MYSQL_DATABASE:-laravel}_test` COLLATE 'utf8mb4_unicode_ci' ;
+                GRANT ALL ON `${DOCKER_MYSQL_DATABASE:-laravel}_test`.* TO '${DOCKER_MYSQL_USER:-default}'@'%' ;
+
+                FLUSH PRIVILEGES ;
+            - |
+                MYSQL_CONFIG=
+                [mysqld]
+                # MariaDB database server configuration file.
+                #
+                # You can use this file to overwrite the default configuration
+                #
+                # For explanations see
+                # https://mariadb.com/kb/en/configuring-mariadb-with-option-files/
+                default_time_zone='UTC'
+        # didn't want to add any bind mount or additional Dockerfile
+        command:
+            bash -c 'echo "$$MYSQL_INIT_SCRIPT" > /docker-entrypoint-initdb.d/init.sql
+            && chmod 555 /docker-entrypoint-initdb.d/init.sql
+            && echo "$$MYSQL_CONFIG" > /etc/mysql/conf.d/my.cnf
+            && chmod 555 /etc/mysql/conf.d/my.cnf
+            && docker-entrypoint.sh mysqld'
+        healthcheck:
+            test: [ "CMD", "mysqladmin" ,"ping", "-h", "localhost" ]
+            interval: 10s
+            timeout: 20s
+            retries: 10
+
+    ### Redis ###
+    redis:
+        image: redis:6.2.6
+        volumes:
+            - redis-data:/data
+
+    ### Adminer ###
+    adminer:
+        image: adminer:4.8.0-standalone
+        environment:
+            - ADMINER_DESIGN=flat
+            - ADM_DEFAULT_SERVER=db
+            - ADMINER_PLUGINS=
+        depends_on:
+            - db
+        labels:
+            - traefik.http.routers.adminer.rule=Host(`adminer-${DOCKER_SERVER_NAME:-app.localhost}`)
+
+    ### Mailhog ###
+    mailhog:
+        image: mailhog/mailhog
+        labels:
+            - traefik.http.routers.mailhog.rule=Host(`mail-${DOCKER_SERVER_NAME:-app.localhost}`)
+            - traefik.http.services.mailhog.loadbalancer.server.port=8025
+        # About command @see https://github.com/mailhog/MailHog/issues/187#issuecomment-733009406
+        command: -invite-jim=1
+
+    ### Redis WebUI ###
+    redis-webui:
+        image: erikdubbelboer/phpredisadmin:v1.13.2
+        environment:
+            - ADMIN_USER=default
+            - ADMIN_PASS=secret
+            - REDIS_1_HOST=redis
+            - REDIS_1_PORT=6379
+        labels:
+            - traefik.http.routers.redis.rule=Host(`redis-${DOCKER_SERVER_NAME:-app.localhost}`)
+        depends_on:
+            - redis
+
+volumes:
+    mariadb-db-data:
+    redis-data:

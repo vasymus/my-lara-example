@@ -1,0 +1,43 @@
+name: Code Formatting
+
+on:
+    - push
+
+jobs:
+    code-formatting:
+        name: Code Formatting
+        runs-on: ubuntu-20.04
+
+        steps:
+            -   name: Checkout Code
+                uses: actions/checkout@v2
+
+            # has built-in cache functionality
+            # see https://github.com/actions/setup-node#caching-packages-dependencies
+            -   name: Install Node (with cache)
+                uses: actions/setup-node@v2
+                with:
+                    node-version: '16.13.2'
+                    cache: 'npm'
+
+            -   name: Display Node And Npm versions
+                run: |
+                    node -v
+                    npm -v
+
+            -   name: Install Npm Dependencies
+                run: npm install
+
+            -   name: Npm Format
+                run: npm run format
+
+            -   name: Run php-cs-fixer
+                uses: docker://oskarstark/php-cs-fixer-ga
+                with:
+                    args: --config=.php-cs-fixer.php --allow-risky=yes
+
+            -   name: Commit Changes
+                uses: stefanzweifel/git-auto-commit-action@v4
+                with:
+                    commit_message: PHP CS changes
+

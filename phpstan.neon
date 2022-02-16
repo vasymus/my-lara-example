@@ -1,0 +1,17 @@
+includes:
+    - ./vendor/nunomaduro/larastan/extension.neon
+
+parameters:
+    level: 5
+    paths:
+        - src
+        - config
+        - database
+    tmpDir: build/phpstan
+    checkModelProperties: false
+    checkMissingIterableValueType: false
+    excludePaths:
+        - ./src/App/Http/Controllers/TestController.php
+
+    ignoreErrors:
+        - '#Unsafe usage of new static#'

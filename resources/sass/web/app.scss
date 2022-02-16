@@ -1,0 +1,33 @@
+@import '~include-media/dist/include-media';
+@import "~normalize.css/normalize.css";
+@import "~slick-carousel/slick/slick.css";
+@import "~@fancyapps/fancybox/dist/jquery.fancybox.css";
+//@import "~swiper/swiper";
+@import "vendor/swiper.min.css";
+@import "bootstrap-parts";
+
+// Fonts
+//@import url('https://fonts.googleapis.com/css?family=Nunito');
+
+// Variables
+@import 'variables';
+
+// Bootstrap
+//@import '~bootstrap/scss/bootstrap';
+
+//* Abstracts modules *//
+@import 'abstracts/main';
+
+//* Base modules *//
+@import 'base/main';
+
+@import "animations";
+
+//* Layout modules *//
+@import 'layout/main';
+
+//* Pages modules *//
+@import 'pages/main';
+
+//* Components *//
+@import 'components/main';
